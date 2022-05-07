@@ -7,8 +7,6 @@ from collections.abc import Collection
 import dataclasses
 from dataclasses import dataclass
 from enum import auto, Enum
-import os
-import os.path
 from pathlib import Path
 import subprocess
 from typing import Optional
