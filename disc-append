@@ -53,7 +53,7 @@ def parse_arguments() -> RunConfig:
                         choices=Command.list_command_options())
     parser.add_argument('device', type=Path,
                         help='path to destination disc')
-    parser.add_argument('--dry_run', action='store_true')
+    parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--volume-id', '-V',
                         help=('specifies the volume ID (volume name or label) '
                               'to be written into the master block'))
