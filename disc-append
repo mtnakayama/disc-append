@@ -60,19 +60,23 @@ def main():
 def confirmation_prompt(run_config: RunConfig) -> bool:
     disc_write(dataclasses.replace(run_config, dry_run=True))
 
+    print('')
     print_size_approximations(run_config)
 
+    print_disc_write_error_messages(run_config)
+
+    print('')
     while True:
         key = input("Would you like to proceed? [y/N]:").lower()
         if key == 'y':
             return True
-        elif key == 'N' or key == '':
+        elif key == 'n' or key == '':
             return False
 
 
 def print_size_approximations(run_config: RunConfig):
     print_bytes_free(run_config.device)
-    approx_write_size = get_bytes_to_be_written(run_config.source_paths)
+    approx_write_size = get_bytes_to_be_written(run_config)
     print(
         'Approx. '
         f'{humanfriendly.format_size(approx_write_size, binary=True)} '
@@ -127,6 +131,28 @@ SESSION_FLAGS = {Command.INIT: '-Z', Command.APPEND: '-M'}
 
 
 def disc_write(run_config: RunConfig):
+    disc_write_impl(run_config)
+
+
+def print_disc_write_error_messages(run_config: RunConfig):
+    completed_process = disc_write_impl(
+        dataclasses.replace(run_config, dry_run=True),
+        capture_output=True,
+        print_executing=False
+    )
+    if 'already carries isofs' in completed_process.stderr:
+        print('')
+        print(
+            '\033[31;1;4m',
+            "WARNING: THIS DISC ALREADY HAS AN EXISTING FILESYSTEM.\n",
+            "If you continue, your existing data will be lost.\n",
+            "(Use the `append` command if you wish to append data instead.)",
+            '\033[0m'
+        )
+
+
+def disc_write_impl(run_config: RunConfig, capture_output=False,
+                    print_executing=True):
     if run_config.volume_id is None:
         raise ValueError("volume_id cannot be none.")
 
@@ -143,16 +169,19 @@ def disc_write(run_config: RunConfig):
         + ['-V', run_config.volume_id]
         + [str(x) for x in run_config.source_paths]
     )
-    print('Executing:', args)
+    if print_executing:
+        print('Executing:', args)
 
-    subprocess.run(args, check=True)
+    return subprocess.run(args, capture_output=capture_output, check=True,
+                          text=True)
 
 
-def get_bytes_to_be_written(run_config) -> int:
+def get_bytes_to_be_written(run_config: RunConfig) -> int:
     args = (
         ['mkisofs']
         + MKISOFS_BASE_ARGS
         + ['--print-size', '--quiet']
+        + [str(x) for x in run_config.source_paths]
     )
     completed_process = subprocess.run(
         args,
@@ -203,6 +232,9 @@ def get_device_stat(device: Path, stat_name: str) -> int:
     result = int(stat_text) if stat_text else 0
 
     return result
+
+def read_media_info():
+    pass
 
 
 if __name__ == '__main__':
