@@ -118,7 +118,7 @@ def disc_write(run_config: RunConfig):
 
     session_flag = SESSION_FLAGS[run_config.command]
 
-    dry_run_flag = ['--dry-run']  # if run_config.dry_run else []
+    dry_run_flag = ['--dry-run'] if run_config.dry_run else []
 
     args = (
         ['growisofs']
