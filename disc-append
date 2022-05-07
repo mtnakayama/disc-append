@@ -199,7 +199,8 @@ def get_device_stat(device: Path, stat_name: str) -> int:
         args,
         capture_output=True, check=True, text=True
     )
-    result = int(completed_process.stdout)
+    stat_text = completed_process.stdout.strip()
+    result = int(stat_text) if stat_text else 0
 
     return result
 
