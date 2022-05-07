@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from enum import auto, Enum
-from pathlib import Path
 from collections.abc import Collection
-from typing import Optional
+import dataclasses
 from dataclasses import dataclass
+from enum import auto, Enum
 import os
 import os.path
+from pathlib import Path
 import subprocess
-from webbrowser import get
+from typing import Optional
 
 import humanfriendly
 
@@ -34,6 +34,7 @@ class RunConfig:
     command: Command
     device: Path
     source_paths: Collection[Path]
+    speed: int
     dry_run: bool = False
     volume_id: Optional[str] = None
 
@@ -51,21 +52,48 @@ def main():
                 print('Using volume id:', volume_id)
                 run_config.volume_id = volume_id
 
-    print_bytes_free(run_config.device)
+    confirmation = confirmation_prompt(run_config)
 
-    approx_write_size = get_size_of_paths(run_config.source_paths)
-    human_approx_write_size = humanfriendly.format_size(approx_write_size,
-                                                        binary=True)
-    print(f'Approx. {human_approx_write_size} to be written.')
-
-    disc_write(run_config)
-
-    if run_config.dry_run:
-        print_bytes_after_operation(run_config.device, approx_write_size)
-    else:
+    if confirmation and not run_config.dry_run:
+        disc_write(run_config)
         print_bytes_free(run_config.device)
 
 
+def confirmation_prompt(run_config: RunConfig) -> bool:
+    disc_write(dataclasses.replace(run_config, dry_run=True))
+
+    print_size_approximations(run_config)
+
+    while True:
+        key = input("Would you like to proceed? [y/N]:").lower()
+        if key == 'y':
+            return True
+        elif key == 'N' or key == '':
+            return False
+
+
+def print_size_approximations(run_config: RunConfig):
+    print_bytes_free(run_config.device)
+    approx_write_size = get_bytes_to_be_written(run_config.source_paths)
+    print(
+        'Approx. '
+        f'{humanfriendly.format_size(approx_write_size, binary=True)} '
+        'to be written.'
+    )
+    current_size = get_medium_free(run_config.device)
+    size_left = current_size - approx_write_size
+    print(
+        'Approx. '
+        f'{humanfriendly.format_size(size_left, binary=True)} '
+        'will be free after the operation.'
+    )
+
+
+
+def print_bytes_free(device: Path):
+    size_left = get_medium_free(device)
+    human_size_left = humanfriendly.format_size(size_left, binary=True)
+    print(f'{human_size_left} bytes free on disc.')
 
 
 def parse_arguments() -> RunConfig:
@@ -89,23 +117,11 @@ def parse_arguments() -> RunConfig:
         device=args.device,
         source_paths=args.source_paths,
         dry_run=args.dry_run,
-        volume_id=args.volume_id
+        volume_id=args.volume_id,
+        speed=args.speed
     )
 
     return run_config
-
-
-def print_bytes_free(device: Path):
-    size_left = get_medium_remaining(device)
-    human_size_left = humanfriendly.format_size(size_left, binary=True)
-    print(f'{human_size_left} bytes free on disc.')
-
-
-def print_bytes_after_operation(device: Path, operation_write: int):
-    size_left = get_medium_remaining(device)
-    human_size_left = humanfriendly.format_size(size_left - operation_write,
-                                                binary=True)
-    print(f'Approx. {human_size_left} will be free after the operation.')
 
 
 MKISOFS_BASE_ARGS = ['-iso-level', '3', '-l', '-T', '-R', '-J', '--joliet-long']
@@ -123,6 +139,7 @@ def disc_write(run_config: RunConfig):
     args = (
         ['growisofs']
         + dry_run_flag
+        + [f'--speed={run_config.speed}']
         + [session_flag, str(run_config.device)]
         + MKISOFS_BASE_ARGS
         + ['-V', run_config.volume_id]
@@ -131,6 +148,24 @@ def disc_write(run_config: RunConfig):
     print('Executing:', args)
 
     subprocess.run(args, check=True)
+
+
+def get_bytes_to_be_written(run_config) -> int:
+    args = (
+        ['mkisofs']
+        + MKISOFS_BASE_ARGS
+        + ['--print-size', '--quiet']
+    )
+    completed_process = subprocess.run(
+        args,
+        capture_output=True, check=True, text=True
+    )
+
+    sectors_to_be_written = int(completed_process.stdout)
+    bytes_to_be_written = sectors_to_be_written * 2048
+
+    return bytes_to_be_written
+
 
 
 def get_volume_id(device: Path) -> str:
@@ -146,22 +181,7 @@ def get_volume_id(device: Path) -> str:
     return volume_id
 
 
-def get_size_of_paths(paths: Collection[Path]) -> int:
-    return sum(get_size_of_path(x) for x in paths)
-
-
-def get_size_of_path(path: Path) -> int:
-    root_size = path.stat().st_size
-
-    children_size = 0
-    for root, dirs, files in os.walk(path):
-        children_size += sum(os.stat(os.path.join(root, x)).st_size for x in dirs)
-        children_size += sum(os.stat(os.path.join(root, x)).st_size for x in files)
-
-    return root_size + children_size
-
-
-def get_medium_remaining(device: Path) -> int:
+def get_medium_free(device: Path) -> int:
     return get_medium_total_size(device) - get_medium_used(device)
 
 
