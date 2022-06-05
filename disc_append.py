@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 from typing import Optional, Union
 import re
+import time
 
 import humanfriendly
 
@@ -51,15 +52,20 @@ def main():
                 print('Using volume id:', volume_id)
                 run_config.volume_id = volume_id
 
-    confirmation = confirmation_prompt(run_config)
+    print_confirmation_info(run_config)
 
-    if confirmation and not run_config.dry_run:
-        disc_write(run_config)
-        media_info = read_media_info(run_config.device)
-        print_bytes_free(media_info)
+    if not run_config.dry_run:
+        if ask_confirmation():
+            disc_write(run_config)
+
+            time.sleep(30)  # wait for disk to be ejected and re-read
+            media_info = read_media_info(run_config.device)
+            print_bytes_free(media_info)
+    else:
+        print("Dry run. No operation performed.")
 
 
-def confirmation_prompt(run_config: RunConfig) -> bool:
+def print_confirmation_info(run_config: RunConfig):
     disc_write(dataclasses.replace(run_config, dry_run=True))
 
     print('')
@@ -67,7 +73,8 @@ def confirmation_prompt(run_config: RunConfig) -> bool:
 
     print_disc_write_error_messages(run_config)
 
-    print('')
+
+def ask_confirmation() -> bool:
     while True:
         key = input("Would you like to proceed? [y/N]:").lower()
         if key == 'y':
@@ -130,7 +137,7 @@ def parse_arguments() -> RunConfig:
     return run_config
 
 
-MKISOFS_BASE_ARGS = ['-iso-level', '3', '-l', '-T', '-R', '-J', '--joliet-long']
+MKISOFS_BASE_ARGS = ['-iso-level', '3', '-l', '-T', '-R']
 SESSION_FLAGS = {Command.INIT: '-Z', Command.APPEND: '-M'}
 
 
